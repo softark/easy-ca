@@ -190,4 +190,4 @@ unset CA_PASS
 
 trap 0
 
-echo -e "$SUCC Client certificate for '${CLIENT_NAME}' created."
+echo -e "$SUCC Code Signing certificate for '${CLIENT_NAME}' created."

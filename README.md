@@ -9,6 +9,7 @@ A suite of bash scripts for automating very basic OpenSSL Certificate Authority 
 * Creating Intermediate Signing CAs
 * Creating Server certificates
 * Creating Client certificates
+* Creating Code Signing certificates
 * Revoking certificates and maintaining CRLs
 * Creating CSRs
 * Managing SSH keys
@@ -22,7 +23,7 @@ A suite of bash scripts for automating very basic OpenSSL Certificate Authority 
 | Name              | Description                                                       |
 | ----------------- | ----------------------------------------------------------------- |
 | create-client     | Create a client certificate                                       |
-| create-codesign   | Create a code signing certificate                                       |
+| create-codesign   | Create a code signing certificate                                 |
 | create-root-ca    | Create a root signing CA                                          |
 | create-server     | Create a server certificate                                       |
 | create-signing-ca | Create an intermediate signing CA inside a root CA                |
