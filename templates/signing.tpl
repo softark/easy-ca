@@ -14,7 +14,7 @@ name_opt                = multiline,-esc_msb,utf8  # Display UTF-8 characters
 
 [ req ]
 default_bits            = {{CA_KEY_LENGTH_SIGNCA}} # RSA key size
-default_days            = 730                      # How long to certify for
+default_days            = 3652                     # How long to certify for
 encrypt_key             = yes                      # Protect private key
 default_md              = sha256                   # MD to use
 utf8                    = yes                      # Input is UTF-8
@@ -58,7 +58,7 @@ crl_extensions          = crl_ext                    # CRL extensions
 crlnumber               = $dir/ca/db/crl.srl         # CRL number file
 database                = $dir/ca/db/certificate.db  # Index file
 default_crl_days        = 30                         # How long before next CRL
-default_days            = 730                        # How long to certify for
+default_days            = 3652                       # How long to certify for
 default_md              = sha256                     # MD to use
 email_in_dn             = no                         # Add email to cert DN
 name_opt                = ca_default                 # Subject DN display options
