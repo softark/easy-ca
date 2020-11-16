@@ -188,6 +188,7 @@ if [ $certs -gt 0 ]; then
             server_cert=$(echo "$txt" | grep -c 'TLS Web Server Authentication') || true
             sign_cert=$(echo "$txt" | grep -c 'Certificate Sign') || true
             client_cert=$(echo "$txt" | grep -c 'TLS Web Client Authentication') || true
+            code_sign=$(echo "$txt" | grep -c 'Code Signing') || true
             valid_since=$(echo "$txt" | grep 'Not Before:' | cut -d ':' -f2- | sed -e 's/^[[:space:]]*//')
             valid_until=$(echo "$txt" | grep 'Not After :' | cut -d ':' -f2- | sed -e 's/^[[:space:]]*//')
             bits=$(echo "$txt" | grep 'Public-Key:' | cut -d ':' -f2 | tr -d "()")
@@ -200,6 +201,13 @@ if [ $certs -gt 0 ]; then
                 san=""
             elif [ "$client_cert" -ge 1 ]; then
                 type="client"
+                if [ $(echo "$txt" | grep -c 'email:') -eq 0 ]; then
+                    san="                SAN:            no email address found\n"
+                else
+                    san="                SAN:            $(echo "$txt" | grep 'email:' | sed -e 's/^[[:space:]]*//')\n"
+                fi
+            elif [ "$code_sign" -ge 1 ]; then
+                type="code signing"
                 if [ $(echo "$txt" | grep -c 'email:') -eq 0 ]; then
                     san="                SAN:            no email address found\n"
                 else
