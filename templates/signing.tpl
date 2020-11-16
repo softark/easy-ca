@@ -101,6 +101,10 @@ authorityInfoAccess     = @issuer_info
 crlDistributionPoints   = @crl_info
 subjectAltName          = $ENV::SAN
 
+[ codesign_ext ]
+keyUsage                = digitalSignature
+extendedKeyUsage        = codeSigning
+
 [ crl_ext ]
 authorityKeyIdentifier  = keyid:always
 authorityInfoAccess     = @issuer_info
