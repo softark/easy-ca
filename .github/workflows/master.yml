@@ -93,6 +93,17 @@ jobs:
           codesign_p12pass
           EOF
 
+      - name: List expired certs
+        working-directory: test-root-ca
+        run: ./bin/list-expiring-certs
+
+      - name: Check that all certs (including the root ca) expire within 5 years
+        working-directory: test-root-ca
+        run: |
+          ./bin/list-expiring-certs -t '5 years' | tee exp.tmp
+          grep -q 'Found 4 expiring' exp.tmp
+          rm -f exp.tmp
+
       - name: Revoke server certificate
         working-directory: test-root-ca
         run: |
@@ -110,6 +121,25 @@ jobs:
           y
           rootCA_password
           EOF
+
+      - name: Check that we only see the root ca and client certs expiring within 5 years
+        working-directory: test-root-ca
+        run: |
+          ./bin/list-expiring-certs -t '5 years' | tee exp.tmp
+          grep -q 'CN=Bogus Inc. Certificate Authority' exp.tmp
+          grep -q 'CN=test-client' exp.tmp
+          rm -f exp.tmp
+
+      - name: Check that we see all certificates again when using -a
+        working-directory: test-root-ca
+        run: |
+          ./bin/list-expiring-certs -t '5 years' -a | tee exp.tmp
+          grep -q 'Found 4 expiring' exp.tmp
+          rm -f exp.tmp
+
+      - name: Check that the exit code for expiring certificates work
+        working-directory: test-root-ca
+        run: ( set +e ; ./bin/list-expiring-certs -t '5 years' -x ; test $? == 5 )
 
       - name: Create signing CA
         working-directory: test-root-ca
@@ -270,6 +300,10 @@ jobs:
           y
           signCA_password
           EOF
+
+      - name: List expired certs
+        working-directory: test-signing-ca
+        run: ./bin/list-expiring-certs
 
       - name: Show status of CA
         working-directory: test-signing-ca

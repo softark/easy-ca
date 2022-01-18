@@ -23,6 +23,7 @@ show-status
 gen-html
 update-crl
 make-client-ovpn
+list-expiring-certs
 "
 
 export TEMPLATES_ROOT="
@@ -49,6 +50,7 @@ show-status
 gen-html
 update-crl
 make-client-ovpn
+list-expiring-certs
 "
 
 export TEMPLATES_SIGN="
