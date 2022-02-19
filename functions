@@ -118,7 +118,9 @@ init_ca_home() {
     # Create top-level CA structure
     mkdir ca
     mkdir ca/archive
+    touch ca/archive/.keep
     mkdir ca/crl
+    touch ca/crl/.keep
     mkdir ca/db
     mkdir ca/private
 
