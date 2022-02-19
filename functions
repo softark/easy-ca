@@ -173,8 +173,10 @@ generate_conf() {
     CA_CERT_O=`ask "$INPUT Organization for new certificates [${CA_CERT_O}]: " CA_CERT_O_DEFAULT "${CA_CERT_O}"`
     CA_CERT_OU=`ask "$INPUT Organization unit for new certificates [${CA_CERT_OU}]: " CA_CERT_OU_DEFAULT "${CA_CERT_OU}"`
 
-    # Place all CA_* vars into defaults.conf
-    { echo ${!CA_*} | for word in $(cat -) ; do echo "$word=\"${!word:-}\"" ; done ; }  > "${DEST}"
+    # Place all CA_* vars into defaults.conf, except CA_DIR and CA_HOME that should be calculated dynamically
+    { echo ${!CA_*} | xargs -n1 | grep -v '^CA_DIR\|CA_HOME$' | for word in $(cat -) ; do echo "$word=\"${!word:-}\"" ; done ; }  > "${DEST}"
+    echo 'export CA_DIR="$(readlink -f "$(dirname -- "${BASH_SOURCE[0]}")/..")"' >> "${DEST}"
+    echo 'CA_HOME="${CA_DIR}"' >> "${DEST}"
 }
 generate_conf_import() {
     DEST="$1"

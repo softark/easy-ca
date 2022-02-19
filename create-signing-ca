@@ -31,12 +31,15 @@ if ! openssl verify -CAfile ca/ca.crt ca/ca.crt >/dev/null 2>&1; then
     echo -e -n "$ERR " && usage && exit 2
 fi
 
-CA_DIR=
+# Save current CA dir
+PARENTCA_DIR="${CA_DIR}"
+
+SUBCA_DIR=
 SYMLINK=0
 
 while getopts d:hl FLAG; do
     case $FLAG in
-        d) CA_DIR=${OPTARG} ;;
+        d) SUBCA_DIR="$(readlink -f "${OPTARG}")" ;;
         h) echo -e -n "$SUCC " && usage && exit 0;;
         l) SYMLINK=1 ;;
         *) echo -e -n "$ERR " && usage && exit 2;;
@@ -45,21 +48,21 @@ done
 
 if [ $OPTIND -le $# ]; then
     echo -e -n "$ERR " && usage && exit 2
-elif [[ "${CA_DIR}" = "" ]]; then
+elif [[ "${SUBCA_DIR}" = "" ]]; then
     echo -e -n "$SUCC " && usage && exit 2
 fi
 
-PARENT="${BIN_DIR}/.."
-CA_NAME="$( basename "${CA_DIR}" )"
-CA_PATH="${CA_PATH:-$( fullpath "${CA_DIR}")}"
-export CA_PATH
+# Act on the SUBCA
+export CA_DIR="${SUBCA_DIR}"
+
+CA_NAME="$( basename "${SUBCA_DIR}" )"
 
 echo >&2
-echo -e "$NOTE Creating new signing sub-CA in '${CA_DIR}'" >&2
+echo -e "$NOTE Creating new signing sub-CA in '${SUBCA_DIR}'" >&2
 echo >&2
 
-init_ca_home "${CA_DIR}"
-trap 'rm -Rf "${CA_DIR}"' 0
+init_ca_home "${SUBCA_DIR}"
+trap 'rm -Rf "${SUBCA_DIR}"' 0
 
 # early verification of root ca password
 if [ -n "$CA_ENABLE_ENGINE" ]; then
@@ -80,8 +83,8 @@ CA_PARENT_MODULUS=$(openssl rsa \
 
 CA_PARENT_ENABLE_ENGINE=$CA_ENABLE_ENGINE
 
-generate_conf "${CA_DIR}/bin/defaults.conf"
-source "${CA_DIR}/bin/defaults.conf"
+generate_conf "${SUBCA_DIR}/bin/defaults.conf"
+source "${SUBCA_DIR}/bin/defaults.conf"
 
 CA_CERT_CN="${CA_CERT_O} Certificate ${CA_NAME}"
 CERT_CN=`ask "$INPUT Common Name for CA certificate [${CA_CERT_CN}]: " CA_SUB_CN_DEFAULT "${CA_CERT_CN}"`
@@ -110,12 +113,12 @@ if [[ -n $CA_ENABLE_ENGINE ]]; then
     done
     init_engine
     export CA_PASS="$(ask_pass_once "Enter PIN for signing sub-CA key:" CA_SUB_PASS_DEFAULT "${SUB_PASS:-""}")"
-    init_slot 9c "${CA_DIR}/ca/ca.pub" "pkcs11:object=SIGN%20key"
+    init_slot 9c "${SUBCA_DIR}/ca/ca.pub" "pkcs11:object=SIGN%20key"
 else
     export CA_PASS="$(ask_pass_twice_verify "Enter passphrase for encrypting signing sub-CA key:" CA_SUB_PASS_DEFAULT "${SUB_PASS:-""}")"
 fi
 
-pushd "${CA_DIR}" > /dev/null
+pushd "${SUBCA_DIR}" > /dev/null
 
 # Generate the signing CA openssl config
 template "${BIN_DIR}/templates/signing.tpl" "ca/ca.conf"
@@ -133,7 +136,7 @@ if [[ -z $CA_ENABLE_ENGINE ]]; then
 else
     generate_pubkey_pkcs11 pkcs11:object=SIGN%20key ca/ca.pub
 fi
-generate_pubkey_ssh ca/ca.pub ca/ssh/ca.ssh.pub ${CA_DIR}
+generate_pubkey_ssh ca/ca.pub ca/ssh/ca.ssh.pub ${SUBCA_DIR}
 
 echo -e "$NOTE Creating the signing sub-CA csr" >&2
 
@@ -150,7 +153,9 @@ openssl req -new -batch \
 
 echo -e "$NOTE Creating the signing sub-CA certificate"
 
-pushd "${PARENT}" > /dev/null
+# Act on the PARENTCA
+export CA_DIR="${PARENTCA_DIR}"
+pushd "${PARENTCA_DIR}" > /dev/null
 
 if [[ -n $CA_PARENT_ENABLE_ENGINE ]] && [[ -n $CA_ENABLE_ENGINE ]] ; then
     echo -e "$ERR WARNING: please make sure you have the proper pkcs11 device inserted. You are signing the sub-CA with the root CA device. Do not have your sub-CA device inserted."
@@ -170,8 +175,8 @@ openssl ca \
    ${CA_PARENT_ENABLE_ENGINE:+$openssl_engine_cmd} \
    -batch -notext \
    -config ca/ca.conf \
-   -in "${CA_DIR}/ca/ca.csr" \
-   -out "${CA_DIR}/ca/ca.crt" \
+   -in "${SUBCA_DIR}/ca/ca.csr" \
+   -out "${SUBCA_DIR}/ca/ca.crt" \
    -extensions signing_ca_ext \
    -passin env:CA_PARENT_PASS
 
@@ -194,9 +199,11 @@ if [[ -n "$CA_ENABLE_ENGINE" ]]; then
             LOOP=
         fi
     done
-    replace_crt 9c "${CA_DIR}/ca/ca.crt"
+    replace_crt 9c "${SUBCA_DIR}/ca/ca.crt"
 fi
+
 popd > /dev/null
+export CA_DIR="${SUBCA_DIR}"
 
 echo -e "$NOTE Creating the signing sub-CA CRL"
 
@@ -209,9 +216,9 @@ openssl ca -gencrl -batch \
 echo -e "$NOTE Creating the chain bundle"
 
 cat ca/ca.crt > ca/chain.pem
-cat "${PARENT}/ca/chain.pem" >> ca/chain.pem
+cat "${PARENTCA_DIR}/ca/chain.pem" >> ca/chain.pem
 
-cp "${PARENT}/ca/root.crt" ca/root.crt
+cp "${PARENTCA_DIR}/ca/root.crt" ca/root.crt
 
 echo -e "$NOTE Verifying trusted chain"
 
