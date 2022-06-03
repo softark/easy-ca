@@ -196,7 +196,11 @@ if [ $certs -gt 0 ]; then
 
             if [ "$server_cert" -ge 1 ]; then
                 type="server"
-                san="                SAN:            $(echo "$txt" | grep 'DNS:' | sed -e 's/^[[:space:]]*//')\n"
+                if [ $(echo "$txt" | grep -c 'DNS:') -eq 0 ]; then
+                    san="                SAN:            no DNS found\n"
+                else
+                    san="                SAN:            $(echo "$txt" | grep 'DNS:' | sed -e 's/^[[:space:]]*//')\n"
+                fi
             elif [ "$sign_cert" -ge 1 ]; then
                 type="signing"
                 san=""

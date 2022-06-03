@@ -150,6 +150,19 @@ jobs:
           EOF
           done
 
+      - name: Manually create server certificate with missing bits to trip up status page
+        run: |
+          mkdir annoying
+          export ca_pass=rootCA_password
+
+          # Internal magic to keep the CA config working. Not beautiful, but
+          # this is not standard usage; we are trying to trip it up.
+          export CA_DIR=$(pwd)/test-root-ca
+          export SAN=
+
+          openssl req -nodes -new -batch -keyout annoying/annoying.key -out annoying/annoying.csr -addext extendedKeyUsage=serverAuth -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=annoying.bogus.com'
+          openssl ca -batch -notext -in annoying/annoying.csr -config test-root-ca/ca/ca.conf -passin env:ca_pass -out annoying/annoying.csr
+
       - name: Show status of CA
         working-directory: test-root-ca
         run: ./bin/show-status
