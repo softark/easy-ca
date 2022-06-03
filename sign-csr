@@ -64,14 +64,22 @@ openssl req -text -noout -verify -in "$CSR_PATH"
 
 export CSR_SUBJ=$(openssl req -utf8 -in "$CSR_PATH" -noout -subject -nameopt multiline)
 export CSR_CERT_CN=$(echo "$CSR_SUBJ" | grep -P '^\s+commonName' | cut -d '=' -f 2- | sed -e 's/^[[:space:]]*//')
-export CSR_CERT_MAIL=${CSR_CERT_MAIL:-$(echo "$CSR_SUBJ" | grep -P '^\s+emailAddress' | cut -d '=' -f 2- | sed -e 's/^[[:space:]]*//')}
 if [ -z "$CSR_CERT_CN" ]; then
     echo -e "$ERR No name supplied in request, exiting." >&2
     exit 1
 fi
-if [ -z "$CSR_CERT_MAIL" ]; then
-    echo -e "$ERR No email address supplied in request, exiting." >&2
-    exit 1
+if [ "$CSR_TYPE" = clients ]; then
+    export CSR_CERT_MAIL=${CSR_CERT_MAIL:-$(echo "$CSR_SUBJ" | grep -P '^\s+emailAddress' | cut -d '=' -f 2- | sed -e 's/^[[:space:]]*//')}
+    if [ -z "$CSR_CERT_MAIL" ]; then
+        echo -e "$ERR No email address supplied in request, exiting." >&2
+        exit 1
+    fi
+elif [ "$CSR_TYPE" = server ]; then
+    # Retrieve the SAN by matching, grabbing the next line in the -text output, printing and quitting
+    CSR_CERT_SAN=$(openssl req -utf8 -in "$CSR_PATH" -noout -text | sed -n '/^[[:space:]]*X509v3 Subject Alternative Name:[[:space:]]*$/ {n;p;q}')
+    if [ -z "$CSR_CERT_SAN" ]; then
+        CSR_CERT_SAN="DNS:$CSR_CERT_CN"
+    fi
 fi
 
 if [ -n "$CSR_NAME" ]; then
@@ -85,7 +93,12 @@ if [ -f "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.crt" ]; then
     exit 1
 fi
 
-echo -e "$NOTE Signing CSR for '$CSR_CERT_CN' with email address '$CSR_CERT_MAIL'" >&2
+export SAN="${CSR_CERT_SAN-email:$CSR_CERT_MAIL}"
+if [ "$CSR_TYPE" = clients ]; then
+    echo -e "$NOTE Signing client CSR for '$CSR_CERT_CN' with email address '$CSR_CERT_MAIL'" >&2
+elif [ "$CSR_TYPE" = server ]; then
+    echo -e "$NOTE Signing server CSR for '$CSR_CERT_CN' with CN '$CSR_CERT_CN' and SANs '$SAN'" >&2
+fi
 
 pushd "${BIN_DIR}/.." > /dev/null
 
@@ -110,10 +123,11 @@ openssl rsa \
 echo -e "$NOTE Creating $CSR_TYPE directory certs/$CSR_TYPE/$SAFE_NAME" >&2
 mkdir -p "certs/$CSR_TYPE/$SAFE_NAME"
 
-# Generate the client cert openssl config
-export SAN="email:$CSR_CERT_MAIL"
+# Generate the cert openssl config
 export CA_USERNAME="$CSR_CERT_CN"
-export CA_CERT_MAIL="$CSR_CERT_MAIL"
+if [ "$CSR_TYPE" = clients ]; then
+    export CA_CERT_MAIL="$CSR_CERT_MAIL"
+fi
 
 cp --suffix ".old" -b -f -u "$CSR_PATH" "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.csr"
 template "$BIN_DIR/templates/$CSR_TYPE.tpl" "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.conf"
@@ -126,6 +140,12 @@ ssh-keygen -f "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.pub" -i -mPKCS8 \
 
 echo -e "$NOTE Creating the certificate (overwriting C,ST,L,O,OU DN fields)." >&2
 
+if [ "$CSR_TYPE" = clients ]; then
+  CERT_SUBJ="/C=${CA_CERT_C}/ST=${CA_CERT_ST}/L=${CA_CERT_L}/O=${CA_CERT_O}/OU=${CA_CERT_OU}/CN=${CA_USERNAME}/emailAddress=${CSR_CERT_MAIL}"
+elif [ "$CSR_TYPE" = server ]; then
+  CERT_SUBJ="/C=${CA_CERT_C}/ST=${CA_CERT_ST}/L=${CA_CERT_L}/O=${CA_CERT_O}/OU=${CA_CERT_OU}/CN=${CSR_CERT_CN}"
+fi
+
 # Create the client certificate overwriting CSR values
 openssl_engine_cmd="\
     -engine pkcs11 \
@@ -137,7 +157,7 @@ openssl ca -batch -notext \
            -in "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.csr" \
            -out "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.crt" \
            -extensions ${CSR_TYPE}_ext \
-           -subj "/C=${CA_CERT_C}/ST=${CA_CERT_ST}/L=${CA_CERT_L}/O=${CA_CERT_O}/OU=${CA_CERT_OU}/CN=${CA_USERNAME}/emailAddress=${CSR_CERT_MAIL}" \
+           -subj "$CERT_SUBJ" \
            -passin env:CA_PASS
 
 echo -e "$NOTE Verifying trusted chain" >&2

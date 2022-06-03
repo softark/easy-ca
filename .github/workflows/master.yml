@@ -129,6 +129,43 @@ jobs:
           signCA_password
           EOF
 
+      - name: User CSR with email, but not in SAN requests
+        run: |
+          mkdir user-csr-with-email
+          cd user-csr-with-email
+          openssl req -nodes -new -batch -keyout a.key -out a.csr -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=John Withmail/emailAddress=john@bogus.com'
+          cd ../test-root-ca
+          ./bin/sign-csr -c ../user-csr-with-email/a.csr << EOF
+          rootCA_password
+          EOF
+          openssl x509 -noout -text -in certs/clients/John-Withmail/John-Withmail.crt | grep email:john@bogus.com
+
+      - name: Server CSR with SAN-DNS
+        run: |
+          mkdir server-csr-with-san-dns
+          cd server-csr-with-san-dns
+          openssl req -nodes -new -batch -keyout a.key -out a.csr -addext subjectAltName=DNS:test.bogus.com,DNS:test2.bogus.com -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=test.bogus.com'
+          cd ../test-root-ca
+          export ca_pass=rootCA_password
+          ./bin/sign-csr -s -c ../server-csr-with-san-dns/a.csr <<EOF
+          rootCA_password
+          EOF
+          openssl x509 -noout -text -in  certs/server/test-bogus-com/test-bogus-com.crt | grep 'DNS:test\.bogus\.com'
+          openssl x509 -noout -text -in  certs/server/test-bogus-com/test-bogus-com.crt | grep 'DNS:test2\.bogus\.com'
+
+
+      - name: Server CSR without SAN-DNS
+        run: |
+          mkdir server-csr-without-san-dns
+          cd server-csr-without-san-dns
+          openssl req -nodes -new -batch -keyout a.key -out a.csr -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=kilo.bogus.com'
+          cd ../test-root-ca
+          export ca_pass=rootCA_password
+          ./bin/sign-csr -s -c ../server-csr-without-san-dns/a.csr <<EOF
+          rootCA_password
+          EOF
+          openssl x509 -noout -text -in  certs/server/kilo-bogus-com/kilo-bogus-com.crt | grep 'DNS:kilo\.bogus\.com'
+
       - name: tar signing ca
         working-directory: test-root-ca
         run: |
