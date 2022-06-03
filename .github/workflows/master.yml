@@ -141,6 +141,15 @@ jobs:
           path: test-root-ca/test-signing-ca.tar
           retention-days: 5
 
+      - name: Generate 8 CRLs (to reach alphabetical territory for serial)
+        working-directory: test-root-ca
+        run: |
+          for _ in $(seq 1 8); do
+            ./bin/update-crl << EOF
+          rootCA_password
+          EOF
+          done
+
       - name: Show status of CA
         working-directory: test-root-ca
         run: ./bin/show-status
