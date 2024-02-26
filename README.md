@@ -20,19 +20,20 @@ A suite of bash scripts for automating very basic OpenSSL Certificate Authority 
 
 #### Scripts:
 
-| Name              | Description                                                       |
-| ----------------- | ----------------------------------------------------------------- |
-| create-client     | Create a client certificate                                       |
-| create-codesign   | Create a code signing certificate                                 |
-| create-root-ca    | Create a root signing CA                                          |
-| create-server     | Create a server certificate                                       |
-| create-signing-ca | Create an intermediate signing CA inside a root CA                |
-| gen-html          | Create a shareable html directory structure for publishing the CA |
-| revoke-cert       | Revoke a (client\|server) certificate                             |
-| show-status       | Show the infos about the current CA (signed certificates...)      |
-| sign-csr          | Sign an imported client certificate                               |
-| create-csr        | Create a client certificate                                       |
-| update-crl        | Updates the CRL                                                   |
+| Name                | Description                                                       |
+| ------------------- | ----------------------------------------------------------------- |
+| create-client       | Create a client certificate                                       |
+| create-codesign     | Create a code signing certificate                                 |
+| create-root-ca      | Create a root signing CA                                          |
+| create-server       | Create a server certificate                                       |
+| create-signing-ca   | Create an intermediate signing CA inside a root CA                |
+| gen-html            | Create a shareable html directory structure for publishing the CA |
+| revoke-cert         | Revoke a (client\|server) certificate                             |
+| show-status         | Show the infos about the current CA (signed certificates...)      |
+| sign-csr            | Sign an imported client certificate                               |
+| create-csr          | Create a client certificate                                       |
+| update-crl          | Updates the CRL                                                   |
+| list-expiring-certs | List certificates that are about to expire                        |
 
 #### Important files:
 
@@ -150,6 +151,18 @@ $CA_DIR/bin/revoke-cert -c $CA_DIR/certs/server/FQDN-Description/FQDN-Descriptio
 
 ```
 $CA_DIR/ca/ca.crl
+```
+
+### Monitor certificates using a cron job
+
+Running **list-expiring-certs** from within a CA installation will list all
+certificates that will expire within a set time. If you have cron jobs set up
+to email you on non-zero exits, a job like this would email you a list of
+certificates with two weeks left every weekday morning:
+
+```
+MAILTO=you@example.org
+0 4 * * 1-5 $CA_DIR/bin/list-expiring-certs -c -t '2 weeks'
 ```
 
 ## Caveats
