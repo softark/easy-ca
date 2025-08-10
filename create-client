@@ -91,13 +91,13 @@ SURE=`ask "$INPUT Create csr on pkcs11 device? (key must be in \"PIV AUTH key\" 
 if [ "${SURE}" != "y" ] && [ "${SURE}" != "Y" ]; then
     ENABLE_ENGINE=
 else
-    echo -e -n "$INPUT Enter PIN for PIV key: " >&2
-    read -r -s PASS
-    echo >&2
-    export PIV_PASS="${PASS}"
+    export PIV_PASS=$(ask_pass_once "Enter PIN for PIV key:" "" "${USER_PASS:-""}")
     ENABLE_ENGINE=1
     CA_PASS=$PIV_PASS init_slot 9a "certs/clients/$SAFE_NAME/$SAFE_NAME.pub" "pkcs11:object=PIV%20AUTH%20key"
 fi
+
+P12_PASSWORD=`ask -s "$INPUT Enter P12 export password (empty to not export): " CA_P12_PASSWORD ""`
+echo >&2
 
 echo -e "$NOTE Creating the client key and csr" >&2
 
@@ -189,7 +189,9 @@ openssl verify -CAfile ca/chain.pem "certs/clients/$SAFE_NAME/$SAFE_NAME.crt"
 
 echo -e "$NOTE Exporting to a p12 file" >&2
 
+export P12_PASSWORD
 openssl pkcs12 -export \
+    -password env:P12_PASSWORD \
     -in certs/clients/$SAFE_NAME/$SAFE_NAME.crt \
     -inkey certs/clients/$SAFE_NAME/$SAFE_NAME.key \
     -certfile ca/ca.crt \

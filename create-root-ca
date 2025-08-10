@@ -59,34 +59,13 @@ CA_CERT_CN=`ask "$INPUT Common Name for CA certificate [${CA_CERT_CN}]: " CA_ROO
 
 if [[ -n $CA_ENABLE_ENGINE ]]; then
     init_engine
-    init_slot 9c "${CA_DIR}/ca/ca.pub"
     # Slot 9c requires PIN entry on every operation.
     # No need to ask for the PIN for re-use.
-    echo -e -n "$INPUT Enter PIN for signing root CA key: " >&2
-    read -r -s PASS1
-    echo
-    if [[ ${#PASS1} -lt 4 ]]; then
-        echo -e "$ERR Passphrase is too short, please use at least 4 characters!" >&2
-        exit 1
-    fi
+    export CA_PASS="$(ask_pass_once "Enter PIN for signing root key:" CA_ROOT_PASS_DEFAULT  "${ROOT_PASS:-""}")"
+    init_slot 9c "${CA_DIR}/ca/ca.pub" "pkcs11:object=SIGN%20key"
 else
-    echo >&2
-    PASS1=`ask -s "$INPUT Enter passphrase for encrypting root CA key: " CA_ROOT_PASS_DEFAULT "${ROOT_PASS:-""}"`
-    echo >&2
-    if [[ "${#PASS1}" -lt 4 ]]; then
-        echo -e "$ERR Passphrase is too short, please use at least 4 characters!" >&2
-        exit 1
-    fi
-    PASS2=`ask -s "$INPUT Verifying - Enter passphrase for encrypting root CA key: " CA_ROOT_PASS_DEFAULT "${ROOT_PASS:-""}"`
-    echo >&2
-    if [[ "${PASS1}" != "${PASS2}" ]]; then
-        echo -e "$ERR Passphrases did not match, exiting." >&2
-        exit 1
-    fi
+    export CA_PASS="$(ask_pass_twice_verify "Enter passphrase for encrypting signing root CA key:" CA_ROOT_PASS_DEFAULT "${ROOT_PASS:-""}")"
 fi
-
-export CA_PASS="${PASS1}"
-export SAN=""
 
 CA_PATH="${CA_PATH:-$( fullpath "${CA_DIR}")}"
 export CA_PATH

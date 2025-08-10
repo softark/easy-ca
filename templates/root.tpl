@@ -48,7 +48,7 @@ default_ca              = root_ca                    # The default CA section
 
 [ root_ca ]
 cert_opt                = ca_default                 # Certificate display options
-dir                     = {{CA_PATH}}                # Full path to root CA dir
+dir                     = $ENV::CA_DIR               # Full path to root CA dir
 certs                   = $dir/certs                 # Certificates dir
 certificate             = $dir/ca/ca.crt             # The CA cert
 copy_extensions         = copy                       # Copy extensions from CSR
@@ -120,6 +120,10 @@ subjectAltName          = $ENV::SAN
 [ codesign_ext ]
 keyUsage                = digitalSignature
 extendedKeyUsage        = codeSigning
+subjectKeyIdentifier    = hash
+authorityKeyIdentifier  = keyid:always
+authorityInfoAccess     = @issuer_info
+crlDistributionPoints   = @crl_info
 
 [ crl_ext ]
 authorityKeyIdentifier  = keyid:always

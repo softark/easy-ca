@@ -135,12 +135,9 @@ if [ "${SURE}" != "y" ] && [ "${SURE}" != "Y" ]; then
     exit 1
 fi
 
-echo
-echo -e -n "$INPUT Enter passphase for signing CA key: "
-read -r -s PASS
-echo
-export CA_PASS="${PASS}"
-export SAN=""
+echo >&2
+export CA_PASS=$(ask_pass_once "Enter passphase for signing CA key:" "CA_ROOT_PASS_DEFAULT" "${ROOT_PASS:-""}")
+echo >&2
 
 echo -e "$NOTE Revoke the certificate"
 

@@ -1,0 +1,321 @@
+name: easy-ca CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  create-root-ca:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: create root ca
+        run: |
+          ./create-root-ca -d test-root-ca-dir <<EOF
+          n
+          test-root-ca
+          bogus.com
+          US
+          California
+          San Francisco
+          Bogus Inc.
+          Operations
+          Bogus Inc. Certificate Authority
+          rootCA_password
+          rootCA_password
+          EOF
+
+      - name: tar root ca
+        run: tar -C test-root-ca-dir -cf test-root-ca.tar .
+
+      - name: Upload root ca
+        uses: actions/upload-artifact@v2
+        with:
+          name: root-ca
+          path: test-root-ca.tar
+          retention-days: 5
+
+  test-root-ca:
+    runs-on: ubuntu-latest
+    needs: create-root-ca
+    steps:
+
+      - name: Download root ca
+        uses: actions/download-artifact@v2
+        with:
+          name: root-ca
+
+      - name: untar root ca
+        run: |
+          # Use another directory name to make sure the CA is movable
+          mkdir test-root-ca
+          tar -C test-root-ca -xf test-root-ca.tar
+
+      - name: Create server cert
+        working-directory: test-root-ca
+        run: |
+          ./bin/create-server -s test-server.bogus.com -a www.test-server.bogus.com << EOF
+          rootCA_password
+          California
+          San Francisco
+          Jurisdiction of test-server.bogus-com
+          n
+          EOF
+
+      - name: Create client cert
+        working-directory: test-root-ca
+        run: |
+          ./bin/create-client -c test-client << EOF
+          rootCA_password
+          San Francisco
+          private
+          test-client@bogus.com
+          n
+
+          EOF
+
+      - name: Create code signing certificate
+        working-directory: test-root-ca
+        run: |
+          ./bin/create-codesign -c test-codesign << EOF
+          rootCA_password
+          San Francisco
+          private
+          test-codesign@bogus.com
+          n
+          codesign_p12pass
+          EOF
+
+      - name: List expired certs
+        working-directory: test-root-ca
+        run: ./bin/list-expiring-certs
+
+      - name: Check that all certs (including the root ca) expire within 5 years
+        working-directory: test-root-ca
+        run: |
+          ./bin/list-expiring-certs -t '5 years' | tee exp.tmp
+          grep -q 'Found 4 expiring' exp.tmp
+          rm -f exp.tmp
+
+      - name: Revoke server certificate
+        working-directory: test-root-ca
+        run: |
+          ./bin/revoke-cert -c certs/server/test-server-bogus-com/test-server-bogus-com.crt << EOF
+          1
+          y
+          rootCA_password
+          EOF
+
+      - name: Revoke code signing certificate
+        working-directory: test-root-ca
+        run: |
+          ./bin/revoke-cert -c certs/codesign/test-codesign/test-codesign.crt << EOF
+          6
+          y
+          rootCA_password
+          EOF
+
+      - name: Check that we only see the root ca and client certs expiring within 5 years
+        working-directory: test-root-ca
+        run: |
+          ./bin/list-expiring-certs -t '5 years' | tee exp.tmp
+          grep -q 'CN=Bogus Inc. Certificate Authority' exp.tmp
+          grep -q 'CN=test-client' exp.tmp
+          rm -f exp.tmp
+
+      - name: Check that we see all certificates again when using -a
+        working-directory: test-root-ca
+        run: |
+          ./bin/list-expiring-certs -t '5 years' -a | tee exp.tmp
+          grep -q 'Found 4 expiring' exp.tmp
+          rm -f exp.tmp
+
+      - name: Check that the exit code for expiring certificates work
+        working-directory: test-root-ca
+        run: ( set +e ; ./bin/list-expiring-certs -t '5 years' -x ; test $? == 5 )
+
+      - name: Create signing CA
+        working-directory: test-root-ca
+        run: |
+          ./bin/create-signing-ca -d test-signing-ca-dir << EOF
+          rootCA_password
+          n
+          test-signing-ca
+          bogus.com
+          US
+          California
+          San Francisco
+          Bogus Inc.
+          Operations
+          Bogus Inc. Certificate test-signing-ca
+          signCA_password
+          signCA_password
+          EOF
+
+      - name: User CSR with email, but not in SAN requests
+        run: |
+          mkdir user-csr-with-email
+          cd user-csr-with-email
+          openssl req -nodes -new -batch -keyout a.key -out a.csr -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=John Withmail/emailAddress=john@bogus.com'
+          cd ../test-root-ca
+          ./bin/sign-csr -c ../user-csr-with-email/a.csr << EOF
+          rootCA_password
+          EOF
+          openssl x509 -noout -text -in certs/clients/John-Withmail/John-Withmail.crt | grep email:john@bogus.com
+
+      - name: Server CSR with SAN-DNS
+        run: |
+          mkdir server-csr-with-san-dns
+          cd server-csr-with-san-dns
+          openssl req -nodes -new -batch -keyout a.key -out a.csr -addext subjectAltName=DNS:test.bogus.com,DNS:test2.bogus.com -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=test.bogus.com'
+          cd ../test-root-ca
+          export ca_pass=rootCA_password
+          ./bin/sign-csr -s -c ../server-csr-with-san-dns/a.csr <<EOF
+          rootCA_password
+          EOF
+          openssl x509 -noout -text -in  certs/server/test-bogus-com/test-bogus-com.crt | grep 'DNS:test\.bogus\.com'
+          openssl x509 -noout -text -in  certs/server/test-bogus-com/test-bogus-com.crt | grep 'DNS:test2\.bogus\.com'
+
+
+      - name: Server CSR without SAN-DNS
+        run: |
+          mkdir server-csr-without-san-dns
+          cd server-csr-without-san-dns
+          openssl req -nodes -new -batch -keyout a.key -out a.csr -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=kilo.bogus.com'
+          cd ../test-root-ca
+          export ca_pass=rootCA_password
+          ./bin/sign-csr -s -c ../server-csr-without-san-dns/a.csr <<EOF
+          rootCA_password
+          EOF
+          openssl x509 -noout -text -in  certs/server/kilo-bogus-com/kilo-bogus-com.crt | grep 'DNS:kilo\.bogus\.com'
+
+      - name: tar signing ca
+        working-directory: test-root-ca
+        run: |
+          tar -C test-signing-ca-dir -cf test-signing-ca.tar .
+
+      - name: Upload signing ca
+        uses: actions/upload-artifact@v2
+        with:
+          name: signing-ca
+          path: test-root-ca/test-signing-ca.tar
+          retention-days: 5
+
+      - name: Generate 8 CRLs (to reach alphabetical territory for serial)
+        working-directory: test-root-ca
+        run: |
+          for _ in $(seq 1 8); do
+            ./bin/update-crl << EOF
+          rootCA_password
+          EOF
+          done
+
+      - name: Manually create server certificate with missing bits to trip up status page
+        run: |
+          mkdir annoying
+          export ca_pass=rootCA_password
+
+          # Internal magic to keep the CA config working. Not beautiful, but
+          # this is not standard usage; we are trying to trip it up.
+          export CA_DIR=$(pwd)/test-root-ca
+          export SAN=
+
+          openssl req -nodes -new -batch -keyout annoying/annoying.key -out annoying/annoying.csr -addext extendedKeyUsage=serverAuth -subj '/C=US/ST=California/L=San Francisco/O=Bogus Inc./OU=Testing department/CN=annoying.bogus.com'
+          openssl ca -batch -notext -in annoying/annoying.csr -config test-root-ca/ca/ca.conf -passin env:ca_pass -out annoying/annoying.csr
+
+      - name: Show status of CA
+        working-directory: test-root-ca
+        run: ./bin/show-status
+
+      - name: Generate HTML page
+        working-directory: test-root-ca
+        run: ./bin/gen-html
+
+      - name: Upload HTML
+        uses: actions/upload-artifact@v2
+        with:
+          name: root-ca-html
+          path: test-root-ca/html
+          retention-days: 60
+
+  test-signing-ca:
+    runs-on: ubuntu-latest
+    needs: test-root-ca
+    steps:
+
+      - name: Download signing ca
+        uses: actions/download-artifact@v2
+        with:
+          name: signing-ca
+
+      - name: untar signing ca
+        run: |
+          mkdir test-signing-ca
+          tar -C test-signing-ca -xf test-signing-ca.tar
+
+      - name: Create server cert
+        working-directory: test-signing-ca
+        run: |
+          ./bin/create-server -s test-server.bogus.com -a www.test-server.bogus.com << EOF
+          signCA_password
+          California
+          San Francisco
+          Jurisdiction of test-server.bogus-com
+          n
+          EOF
+
+      - name: Create client cert
+        working-directory: test-signing-ca
+        run: |
+          ./bin/create-client -c test-client << EOF
+          signCA_password
+          San Francisco
+          private
+          test-client@bogus.com
+          n
+
+          EOF
+
+      - name: Revoke server cert
+        working-directory: test-signing-ca
+        run: |
+          ./bin/revoke-cert -c certs/server/test-server-bogus-com/test-server-bogus-com.crt << EOF
+          1
+          y
+          signCA_password
+          EOF
+
+      - name: Revoke client cert
+        working-directory: test-signing-ca
+        run: |
+          ./bin/revoke-cert -c certs/clients/test-client/test-client.crt << EOF
+          5
+          y
+          signCA_password
+          EOF
+
+      - name: List expired certs
+        working-directory: test-signing-ca
+        run: ./bin/list-expiring-certs
+
+      - name: Show status of CA
+        working-directory: test-signing-ca
+        run: ./bin/show-status
+
+      - name: Generate HTML page
+        working-directory: test-signing-ca
+        run: ./bin/gen-html
+
+      - name: Upload HTML
+        uses: actions/upload-artifact@v2
+        with:
+          name: signing-ca-html
+          path: test-signing-ca/html
+          retention-days: 60

@@ -55,6 +55,7 @@ echo -e "$NOTE Creating directory structure"
 
 mkdir html/
 mkdir html/ca/
+mkdir html/ca/ssh
 
 if openssl verify -CAfile ca/ca.crt ca/ca.crt >/dev/null 2>&1; then
     echo -e "$NOTE Creating index.html for root CA"
@@ -70,9 +71,11 @@ if openssl verify -CAfile ca/ca.crt ca/ca.crt >/dev/null 2>&1; then
 
     cp ca/ca.crt "html/ca/${CA_HTML_ROOT_NAME}.crt"
     cp ca/ca.crl "html/ca/${CA_HTML_ROOT_NAME}.crl"
+    cp ca/ssh/ca.ssh.pub "html/ca/ssh/${CA_HTML_ROOT_NAME}.pub"
 
     ln -s "${CA_HTML_ROOT_NAME}.crt" "html/ca/$CA_NAME.crt"
     ln -s "${CA_HTML_ROOT_NAME}.crl" "html/ca/$CA_NAME.crl"
+    ln -s "${CA_HTML_ROOT_NAME}.pub" "html/ca/ssh/$CA_NAME.pub"
 
     echo -e "$SUCC html directory successfully created"
 else
@@ -96,9 +99,11 @@ else
     cp ca/root.crt "html/ca/${CA_HTML_ROOT_NAME}.crt"
     cp ca/ca.crt "html/ca/${CA_HTML_SIGN_NAME}.crt"
     cp ca/ca.crl "html/ca/${CA_HTML_SIGN_NAME}.crl"
+    cp ca/ssh/ca.ssh.pub "html/ca/ssh/${CA_HTML_SIGN_NAME}.pub"
 
     ln -s "${CA_HTML_SIGN_NAME}.crt" "html/ca/$CA_NAME.crt"
     ln -s "${CA_HTML_SIGN_NAME}.crl" "html/ca/$CA_NAME.crl"
+    ln -s "${CA_HTML_SIGN_NAME}.pub" "html/ca/ssh/$CA_NAME.pub"
 
     echo -e "$SUCC html directory successfully created"
 fi

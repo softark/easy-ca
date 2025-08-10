@@ -159,7 +159,8 @@ if [ -z $skip ]; then
     fi
     echo -e "$NOTE     Revoked Certificates        $revoked_certs"
 
-    revoked_lists=$(($(cat "$ROOT_DIR/ca/db/crl.srl") - 1))
+    crl_srl=$(cat "$ROOT_DIR/ca/db/crl.srl")
+    revoked_lists=$((16#$crl_srl - 1))
     echo -e "$NOTE     Revoke Certificates Lists  "  $revoked_lists
 fi
 
@@ -195,7 +196,11 @@ if [ $certs -gt 0 ]; then
 
             if [ "$server_cert" -ge 1 ]; then
                 type="server"
-                san="                SAN:            $(echo "$txt" | grep 'DNS:' | sed -e 's/^[[:space:]]*//')\n"
+                if [ $(echo "$txt" | grep -c 'DNS:') -eq 0 ]; then
+                    san="                SAN:            no DNS found\n"
+                else
+                    san="                SAN:            $(echo "$txt" | grep 'DNS:' | sed -e 's/^[[:space:]]*//')\n"
+                fi
             elif [ "$sign_cert" -ge 1 ]; then
                 type="signing"
                 san=""
