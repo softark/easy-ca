@@ -16,12 +16,13 @@ source "${BIN_DIR}/functions"
 source "${BIN_DIR}/defaults.conf"
 
 usage() {
-    echo "Usage: $0 -s SHORT_NAME -a ALT_NAME [-a ALT_NAME2]..."
+    echo "Usage: $0 -s SHORT_NAME -a ALT_NAME [-a ALT_NAME2]... [-i ALT_IP1]..."
     echo "Issues a server certificate for SHORT_NAME"
     echo
     echo "Options:"
     echo "    -s SHORT_NAME   Server hostname (commonName) for the new cert"
     echo "    -a ALT_NAME     One (or more) subjectAltNames for the new cert"
+    echo "    -i ALT_IP       One (or more) IP addresses as SANs for the new cert"
     echo
 }
 
@@ -33,7 +34,7 @@ fi
 SERVER_NAME=
 ALT_NAME=
 
-while getopts s:a:h FLAG; do
+while getopts s:a:i:h FLAG; do
     case $FLAG in
         h) echo -e -n "$SUCC " && usage && exit 0
            ;;
@@ -43,6 +44,12 @@ while getopts s:a:h FLAG; do
                ALT_NAME="DNS:${OPTARG}"
            else
                ALT_NAME="${ALT_NAME}, DNS:${OPTARG}"
+           fi
+           ;;
+        i) if [ -z "${ALT_NAME}" ]; then
+               ALT_NAME="IP:${OPTARG}"
+           else
+               ALT_NAME="${ALT_NAME}, IP:${OPTARG}"
            fi
            ;;
         *) echo -e -n "$ERR " && usage && exit 2
@@ -106,7 +113,7 @@ if [ "${SURE}" != "y" ] && [ "${SURE}" != "Y" ]; then
     ENABLE_ENGINE=
 else
     ENABLE_ENGINE=1
-    init_slot 9a "certs/server/$SAFE_NAME/$SAFE_NAME.pub"
+    init_slot 9a "certs/server/$SAFE_NAME/$SAFE_NAME.pub" "pkcs11:object=PIV%20AUTH%20key"
 fi
 
 echo -e "$NOTE Creating the server key and csr" >&2

@@ -23,6 +23,7 @@ show-status
 gen-html
 update-crl
 make-client-ovpn
+list-expiring-certs
 "
 
 export TEMPLATES_ROOT="
@@ -49,6 +50,7 @@ show-status
 gen-html
 update-crl
 make-client-ovpn
+list-expiring-certs
 "
 
 export TEMPLATES_SIGN="
@@ -66,6 +68,9 @@ SUCC="\033[32;1m[!]\033[0m"
 INPUT="\033[36;1m[>]\033[0m"
 ERR="\033[31;1m[!]\033[0m"
 
+# Configuration file variables in openssl config that need to be set even if
+# not used, otherwise openssl will error out on reading it.
+export SAN=""
 
 fullpath() {
     cd "$(dirname "$1")" || exit 2
@@ -115,7 +120,9 @@ init_ca_home() {
     # Create top-level CA structure
     mkdir ca
     mkdir ca/archive
+    touch ca/archive/.keep
     mkdir ca/crl
+    touch ca/crl/.keep
     mkdir ca/db
     mkdir ca/private
 
@@ -168,8 +175,10 @@ generate_conf() {
     CA_CERT_O=`ask "$INPUT Organization for new certificates [${CA_CERT_O}]: " CA_CERT_O_DEFAULT "${CA_CERT_O}"`
     CA_CERT_OU=`ask "$INPUT Organization unit for new certificates [${CA_CERT_OU}]: " CA_CERT_OU_DEFAULT "${CA_CERT_OU}"`
 
-    # Place all CA_* vars into defaults.conf
-    { echo ${!CA_*} | for word in $(cat -) ; do echo "$word=\"${!word:-}\"" ; done ; }  > "${DEST}"
+    # Place all CA_* vars into defaults.conf, except CA_DIR and CA_HOME that should be calculated dynamically
+    { echo ${!CA_*} | xargs -n1 | grep -v '^CA_DIR\|CA_HOME$' | for word in $(cat -) ; do echo "$word=\"${!word:-}\"" ; done ; }  > "${DEST}"
+    echo 'export CA_DIR="$(readlink -f "$(dirname -- "${BASH_SOURCE[0]}")/..")"' >> "${DEST}"
+    echo 'CA_HOME="${CA_DIR}"' >> "${DEST}"
 }
 generate_conf_import() {
     DEST="$1"
@@ -220,15 +229,15 @@ ask(){
     local question="$1"
     local variable="$2"
     local default="$3"
-    if [ ! -z "${!variable+x}" ] ; then
+    if [ -n "$variable" ] && [ -n "${!variable+x}" ] ; then
         echo -e "$NOTE Using $variable from environment: ${!variable}" >&2
         echo "${!variable}"
         return
     fi
     echo -e -n "$question" >&2
     read -r $readopts REPLY
-    if [ -z "${REPLY:-}" ]; then
-        echo -e "$NOTE Using default $variable : $default" >&2
+    if [ -n "${default}" ] && [ -z "${REPLY:-}" ]; then
+        echo -e "$NOTE Using default: $default" >&2
         echo "$default"
     else
         echo "$REPLY"
@@ -265,6 +274,68 @@ ask_client_cert_questions() {
     fi
 }
 
+##
+## ask_pass_twice_verify
+##
+## Ask for a pass twice for verification, and validate length to be at least 4
+##
+function ask_pass_twice_verify(){
+    local question="$1"
+    local variable="$2"
+    local default="${3-}"
+    local pass1=
+    local pass2=
+    while true; do
+        pass1=`ask -s "$INPUT $question " "$variable" "$default"`
+        echo >&2
+        # Do a quick exit if we are to use the variable value
+        if [ -n "${!variable+x}" ] ; then
+            # ask would have already informed the user
+            echo "${pass1}"
+            return
+        fi
+        if [[ ${#pass1} -lt 4 ]]; then
+            echo -e "$ERR Passphrase is too short, please use at least 4 characters!" >&2
+            continue
+        fi
+        pass2=`ask -s "$INPUT Verifying - $question " "$variable" "$default"`
+        echo >&2
+        if [ "$pass1" == "$pass2" ]; then
+            echo "$pass1"
+            return 0
+        fi
+        echo -e "$ERR Passwords did not match" >&2
+    done
+}
+
+##
+## ask_pass_once
+##
+## Ask for a pass once, and validate length to be at least 4
+##
+function ask_pass_once(){
+    local question="$1"
+    local variable="$2"
+    local default="${3-}"
+    local pass=
+    while true; do
+        pass=`ask -s "$INPUT $question " "$variable" "$default"`
+        # Do a quick exit if we are to use the variable value
+        if [ -n "${!variable+x}" ] ; then
+            # ask would have already informed the user
+            echo "${pass}"
+            return
+        fi
+        echo >&2
+        if [[ ${#pass} -lt 4 ]]; then
+            echo -e "$ERR Passphrase is too short, please use at least 4 characters!" >&2
+            continue
+        fi
+        echo "$pass"
+        return 0
+    done
+}
+
 function generate_key(){
     local KEYPATH=$1
     echo -e "$NOTE Creating the key (${CA_KEY_ALG} with ${CA_KEY_LENGTH_ROOTCA} bits)" >&2
@@ -274,19 +345,31 @@ function generate_key(){
 function extract_pubkey(){
     local CRTPATH=$1
     local PUBPATH=$2
-    openssl x509 -in $CRTPATH -pubkey -noout -passin env:CA_PASS > $PUBPATH
+    local PASS_ARG="-passin env:CA_PASS"
+    if [ -z "${CA_PASS-}" ]; then
+      PASS_ARG=
+    fi
+    openssl x509 -in $CRTPATH -pubkey -noout $PASS_ARG > $PUBPATH
 }
 function generate_pubkey(){
     local KEYPATH=$1
     local PUBPATH=$2
-    openssl rsa -in $KEYPATH -pubout -out $PUBPATH -passin env:CA_PASS
+    local PASS_ARG="-passin env:CA_PASS"
+    if [ -z "${CA_PASS-}" ]; then
+      PASS_ARG=
+    fi
+    openssl rsa -in $KEYPATH -pubout -out $PUBPATH $PASS_ARG
 }
 function generate_pubkey_pkcs11(){
     local KEYPATH=$1
     local PUBPATH=$2
-    echo -e "$NOTE CA key should already exist via pkcs11 engine." >&2
+    local PASS_ARG="-passin env:CA_PASS"
+    if [ -z "${CA_PASS-}" ]; then
+      PASS_ARG=
+    fi
+    echo -e "$NOTE key should already exist via pkcs11 engine." >&2
     openssl rsa -engine pkcs11 -inform engine \
-                -in $KEYPATH -pubout -out $PUBPATH -passin env:CA_PASS
+                -in $KEYPATH -pubout -out $PUBPATH $PASS_ARG
 }
 
 function generate_pubkey_ssh(){
@@ -333,7 +416,6 @@ function extract_crt(){
 function init_engine(){
     echo -e "$NOTE THIS WILL RESET YOUR YUBIKEY USING YKMAN" >&2
     echo -e "$NOTE Run 'ykman piv reset' on your own to set PIN/PUK/management keys properly." >&2
-    echo -e -n "$INPUT Do you wish to reset your device? [y/N]: " >&2
     local SURE=`ask "$INPUT Do you wish to reset your device? [y/N]: " CA_INIT_ENGINE_SURE ""`
     if [ "${SURE}" == "y" ] || [ "${SURE}" == "Y" ]; then
         ykman piv reset

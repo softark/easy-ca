@@ -6,11 +6,11 @@ default_md              = sha256                   # MD to use
 utf8                    = yes                      # Input is UTF-8
 string_mask             = utf8only                 # Emit UTF-8 strings
 prompt                  = yes                      # Prompt for DN
-distinguished_name      = client_dn                # DN template
+distinguished_name      = codesign_dn              # DN template
 # extensions
 #req_extensions          = codesign_reqext          # Desired extensions
 
-[ client_dn ]
+[ codesign_dn ]
 countryName                     = "1. Country Name (2 letters) "
 countryName_max                 = 2
 countryName_default             = {{CA_CERT_C}}

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Jonas Eriksson <jonas@upto.se>
+
+set -eu
+set -o pipefail
+
+umask 0077
+
+BIN_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "${BIN_DIR}/functions"
+source "${BIN_DIR}/defaults.conf"
+
+usage() {
+    echo "Usage: $0 [-t TIME_DELTA] [-x] [-s] [-a]"
+    echo "Lists certificates expiring within TIME_DELTA"
+    echo
+    echo "Options:"
+    echo "    -t TIME_DELTA   Time delta in a format parseable by date --date"
+    echo "                    Default: 1 month"
+    echo "    -x              Exit with status 5 if expiring certs was found"
+    echo "    -c              Clean mode; only output expiring certs and expire"
+    echo "                    date without colors for e.g. crontab emails"
+    echo "    -a              Show all certificates; default: only valid"
+    echo
+}
+
+if [ ! -f ca/db/certificate.db ]; then
+    echo -e "$ERR Must be run inside a CA directory!"
+    exit 2
+fi
+
+TIME_DELTA="1 month"
+FOUND_EXPIRES_EXIT_STATUS=0
+CLEAN_MODE=
+SHOW_ALL=
+
+while getopts t:xcha FLAG; do
+    case $FLAG in
+        h) echo -e -n "$SUCC " && usage && exit 0
+           ;;
+        t) TIME_DELTA="${OPTARG}"
+           ;;
+        x) FOUND_EXPIRES_EXIT_STATUS=5
+           ;;
+        c) CLEAN_MODE=1
+           ;;
+        a) SHOW_ALL=1
+           ;;
+        *) echo -e -n "$ERR " && usage && exit 2
+           ;;
+    esac
+done
+
+if [ $OPTIND -le $# ]; then
+    echo -e -n "$ERR " && usage && exit 2
+fi
+
+EXPIRY_MATCH_DATE="$(date --date="$TIME_DELTA" +%y%m%d%H%M%S)"
+
+# Set the internal field separator to tab
+IFS='	'
+COUNT=0
+while read status expiry serial filename dn; do
+  if ! [ "$SHOW_ALL" ] && ! [ "$status" = V ]; then
+    continue
+  fi
+  if [ "$EXPIRY_MATCH_DATE" -ge "${expiry%Z}" ]; then
+    COUNT=$(( COUNT + 1))
+    # No year 2100 support at this time
+    HUMAN_EXPIRY="20${expiry:0:2}-${expiry:2:2}-${expiry:4:2} ${expiry:6:2}:${expiry:8:2}:${expiry:10:2} UTC"
+    MESSAGE="Certificate with serial $serial ($dn) will expire on $HUMAN_EXPIRY"
+    if [ "$CLEAN_MODE" ]; then
+      echo "$MESSAGE"
+    else
+      echo -e "$NOTE $MESSAGE"
+    fi
+  fi
+done < ca/db/certificate.db
+
+if ! [ "$CLEAN_MODE" ]; then
+  echo -e "$SUCC Found $COUNT expiring certificates"
+fi
+
+if [ $COUNT -gt 0 ]; then
+  exit $FOUND_EXPIRES_EXIT_STATUS
+fi

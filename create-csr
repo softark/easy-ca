@@ -104,7 +104,7 @@ if [[ -z "$CSR_KEY" ]]; then
     read -r ENABLE_ENGINE
     if [ "${ENABLE_ENGINE}" == "y" ] || [ "${ENABLE_ENGINE}" == "Y" ]; then
         ENABLE_ENGINE=1
-        init_slot 9a "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.pub"
+        init_slot 9a "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.pub" "pkcs11:object=PIV%20AUTH%20key"
     else
         ENABLE_ENGINE=
         if [ ! -f "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.key" ]; then
@@ -151,7 +151,7 @@ openssl rsa \
 
 if [ -z "$ENABLE_ENGINE" ] && [ -z "$CSR_KEY" ]; then
     chmod 0400 "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.key"
-    ln -s "$SAFE_NAME".key "certs/$CSR_TYPE/$SAFE_NAME/ssh/$SAFE_NAME.ssh"
+    ln -s ./"$SAFE_NAME".key "certs/$CSR_TYPE/$SAFE_NAME/ssh/$SAFE_NAME.ssh"
     openssl rsa -in "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.key" \
         -pubout -out "certs/$CSR_TYPE/$SAFE_NAME/$SAFE_NAME.pub"
 fi

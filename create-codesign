@@ -18,11 +18,11 @@ source "${BIN_DIR}/functions"
 source "${BIN_DIR}/defaults.conf"
 
 usage() {
-    echo "Usage: $0 -c CLIENT_NAME"
-    echo "Issues a code signing certificate for CLIENT_NAME"
+    echo "Usage: $0 -c CERT_NAME"
+    echo "Issues a code signing certificate named CERT_NAME"
     echo
     echo "Options:"
-    echo "    -c CLIENT_NAME  Client name (commonName) for the new cert"
+    echo "    -c CERT_NAME  Certificate name (commonName) for the new cert"
     echo
 }
 
@@ -31,11 +31,11 @@ if [ ! -f ca/ca.crt ]; then
     exit 2
 fi
 
-CLIENT_NAME=
+CERT_NAME=
 
 while getopts c:h FLAG; do
     case $FLAG in
-        c) CLIENT_NAME=${OPTARG} ;;
+        c) CERT_NAME=${OPTARG} ;;
         h) echo -e -n "$SUCC " && usage && exit 0 ;;
         *) echo -e -n "$ERR " && usage && exit 2 ;;
     esac
@@ -43,18 +43,18 @@ done
 
 if [ $OPTIND -le $# ]; then
     echo -e -n "$ERR " && usage && exit 2
-elif [ "${CLIENT_NAME}" = "" ]; then
+elif [ "${CERT_NAME}" = "" ]; then
     echo -e -n "$ERR " && usage && exit 1
 fi
 
-SAFE_NAME=$(echo "${CLIENT_NAME}" | sed 's/\*/star/g' | sed 's/[^A-Za-z0-9-]/-/g')
+SAFE_NAME=$(echo "${CERT_NAME}" | sed 's/\*/star/g' | sed 's/[^A-Za-z0-9-]/-/g')
 
-echo -e "$NOTE Creating new code signing certificate for '$CLIENT_NAME'" >&2
+echo -e "$NOTE Creating new code signing certificate named '$CERT_NAME'" >&2
 
 pushd "${BIN_DIR}/.." > /dev/null
 
 if [ -d "certs/codesign/$SAFE_NAME" ]; then
-    echo -e "$ERR Configuration already exists for '$CLIENT_NAME' ($SAFE_NAME), exiting." >&2
+    echo -e "$ERR Configuration already exists for '$CERT_NAME' ($SAFE_NAME), exiting." >&2
     exit 1
 fi
 
@@ -81,23 +81,22 @@ trap 'rm -Rf "certs/codesign/$SAFE_NAME"' 0
 mkdir -p "certs/codesign/$SAFE_NAME"
 
 # Generate the code signing cert openssl config
-export CA_USERNAME="${CLIENT_NAME}"
+export CA_USERNAME="${CERT_NAME}"
 export CA_CERT_MAIL=""
 ask_client_cert_questions
-export SAN="email:$CA_CERT_MAIL"
 template "${BIN_DIR}/templates/codesign.tpl" "certs/codesign/$SAFE_NAME/$SAFE_NAME.conf"
 
 SURE=`ask "$INPUT Create csr on pkcs11 device? (key must be in \"PIV AUTH key\" or 9a) [y/N]: " CA_USE_PKCS11 "N"`
 if [ "${SURE}" != "y" ] && [ "${SURE}" != "Y" ]; then
     ENABLE_ENGINE=
 else
-    echo -e -n "$INPUT Enter PIN for PIV key: " >&2
-    read -r -s PASS
-    echo >&2
-    export PIV_PASS="${PASS}"
+    export PIV_PASS=$(ask_pass_once "Enter PIN for PIV key:" "" "${USER_PASS:-""}")
     ENABLE_ENGINE=1
     CA_PASS=$PIV_PASS init_slot 9a "certs/codesign/$SAFE_NAME/$SAFE_NAME.pub" "pkcs11:object=PIV%20AUTH%20key"
 fi
+
+P12_PASSWORD=`ask -s "$INPUT Enter P12 export password (empty to not export): " CA_P12_PASSWORD ""`
+echo >&2
 
 echo -e "$NOTE Creating the code signing key and csr" >&2
 
@@ -178,7 +177,9 @@ openssl verify -CAfile ca/chain.pem "certs/codesign/$SAFE_NAME/$SAFE_NAME.crt"
 
 echo -e "$NOTE Exporting to a p12 file" >&2
 
+export P12_PASSWORD
 openssl pkcs12 -export \
+    -password env:P12_PASSWORD \
     -in certs/codesign/$SAFE_NAME/$SAFE_NAME.crt \
     -inkey certs/codesign/$SAFE_NAME/$SAFE_NAME.key \
     -certfile ca/ca.crt \
@@ -190,4 +191,4 @@ unset CA_PASS
 
 trap 0
 
-echo -e "$SUCC Client certificate for '${CLIENT_NAME}' created."
+echo -e "$SUCC Code Signing certificate named '${CERT_NAME}' created."

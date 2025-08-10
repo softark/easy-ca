@@ -26,9 +26,9 @@ commonName                      = "6. Common Name              "
 commonName_max                  = 64
 commonName_default              = {{CA_HOSTNAME}}
 
-#[ server_reqext ]
-#keyUsage                = critical,digitalSignature,keyEncipherment
-#basicConstraints        = critical,CA:false
-#extendedKeyUsage        = critical,serverAuth,clientAuth
-#subjectKeyIdentifier    = hash
-#subjectAltName          = $ENV::SAN
+[ server_reqext ]
+keyUsage                = critical,digitalSignature,keyEncipherment
+basicConstraints        = critical,CA:false
+extendedKeyUsage        = critical,serverAuth,clientAuth
+subjectKeyIdentifier    = hash
+subjectAltName          = $ENV::SAN

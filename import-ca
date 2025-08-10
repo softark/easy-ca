@@ -77,19 +77,11 @@ fi
 if [[ -n $CA_ENABLE_ENGINE ]]; then
     # Slot 9c requires PIN entry on every operation.
     # No need to ask for the PIN for re-use.
-    echo -e -n "$INPUT Enter PIN for signing CA key: "
-    read -r -s PASS1
-    echo
-    if [[ ${#PASS1} -lt 4 ]]; then
-        echo -e "$ERR Passphrase is too short, please use at least 4 characters!"
-        exit 1
-    fi
+    CA_PASS="$(ask_pass_once "Enter PIN for signing CA key:" CA_ROOT_PASS_DEFAULT  "${ROOT_PASS:-""}")"
 elif [ -z "$CERT_PATH" ]; then
     echo -e "$ERR Must provide certificate via file or PKCS11."
     exit 1
 fi
-
-export SAN=""
 
 CA_PATH="${CA_PATH:-$( fullpath "${CA_DIR}")}"
 CERT_FULL_PATH="$( fullpath "${CERT_PATH}")"
@@ -103,32 +95,17 @@ echo -e "$NOTE Importing the signed CA certificate"
 mkdir -p ca/ssh
 echo $( od -vAn -N2 -tu2 < /dev/urandom )00 > ca/ssh/serial
 
-PASS1=
 if [ -z "$CA_ENABLE_ENGINE" ]; then
     cp $CERT_FULL_PATH ca/ca.crt
     if [ -n "$KEY_PATH" ] ; then
-        echo
-        echo -e -n "$INPUT Enter passphase for CA key: "
-        read -r -s PASS1
-        echo
-        if [[ ${#PASS1} -lt 4 ]]; then
-            echo -e "$ERR Passphrase is too short, please use at least 4 characters!"
-            exit 1
-        fi
-        echo -e -n "$INPUT Verifying - Enter passphase for encrypting CA key: "
-        read -r -s PASS2
-        echo
-        if [[ "${PASS1}" != "${PASS2}" ]]; then
-            echo -e "$ERR Passphrases did not match, exiting."
-            exit 1
-        fi
+        CA_PASS="$(ask_pass_twice_verify "Enter passphrase for CA key:" CA_ROOT_PASS_DEFAULT "${ROOT_PASS:-""}")"
         cp $KEY_FULL_PATH ca/private/ca.key
         ln -s ../private/ca.key ca/ssh/ca.ssh
     fi
 else
     extract_crt 9c ca/ca.crt
 fi
-export CA_PASS="${PASS1}"
+export CA_PASS
 mkdir -p ca/archive
 
 # Fix metadata

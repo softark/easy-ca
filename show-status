@@ -159,7 +159,8 @@ if [ -z $skip ]; then
     fi
     echo -e "$NOTE     Revoked Certificates        $revoked_certs"
 
-    revoked_lists=$(($(cat "$ROOT_DIR/ca/db/crl.srl") - 1))
+    crl_srl=$(cat "$ROOT_DIR/ca/db/crl.srl")
+    revoked_lists=$((16#$crl_srl - 1))
     echo -e "$NOTE     Revoke Certificates Lists  "  $revoked_lists
 fi
 
@@ -188,18 +189,30 @@ if [ $certs -gt 0 ]; then
             server_cert=$(echo "$txt" | grep -c 'TLS Web Server Authentication') || true
             sign_cert=$(echo "$txt" | grep -c 'Certificate Sign') || true
             client_cert=$(echo "$txt" | grep -c 'TLS Web Client Authentication') || true
+            code_sign=$(echo "$txt" | grep -c 'Code Signing') || true
             valid_since=$(echo "$txt" | grep 'Not Before:' | cut -d ':' -f2- | sed -e 's/^[[:space:]]*//')
             valid_until=$(echo "$txt" | grep 'Not After :' | cut -d ':' -f2- | sed -e 's/^[[:space:]]*//')
             bits=$(echo "$txt" | grep 'Public-Key:' | cut -d ':' -f2 | tr -d "()")
 
             if [ "$server_cert" -ge 1 ]; then
                 type="server"
-                san="                SAN:            $(echo "$txt" | grep 'DNS:' | sed -e 's/^[[:space:]]*//')\n"
+                if [ $(echo "$txt" | grep -c 'DNS:') -eq 0 ]; then
+                    san="                SAN:            no DNS found\n"
+                else
+                    san="                SAN:            $(echo "$txt" | grep 'DNS:' | sed -e 's/^[[:space:]]*//')\n"
+                fi
             elif [ "$sign_cert" -ge 1 ]; then
                 type="signing"
                 san=""
             elif [ "$client_cert" -ge 1 ]; then
                 type="client"
+                if [ $(echo "$txt" | grep -c 'email:') -eq 0 ]; then
+                    san="                SAN:            no email address found\n"
+                else
+                    san="                SAN:            $(echo "$txt" | grep 'email:' | sed -e 's/^[[:space:]]*//')\n"
+                fi
+            elif [ "$code_sign" -ge 1 ]; then
+                type="code signing"
                 if [ $(echo "$txt" | grep -c 'email:') -eq 0 ]; then
                     san="                SAN:            no email address found\n"
                 else
